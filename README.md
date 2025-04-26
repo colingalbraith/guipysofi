@@ -32,7 +32,7 @@ pip install guipysofi
 #### Option 2: Install from source
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/guipysofi.git
+git clone https://github.com/colingalbraith/guipysofi.git
 cd guipysofi
 pip install -e .
 ```
