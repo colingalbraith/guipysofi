@@ -281,6 +281,7 @@ class DataManager:
         self.total_frames = 0
         self.status_callback = status_callback
         self.progress_callback = progress_callback
+        self.file_path = None
         
         # Temporary files
         self.temp_files = []
@@ -344,6 +345,9 @@ class DataManager:
             except Exception as e:
                 raise ValueError(f"Failed to read TIFF file: {str(e)}")
             
+            # Save the file path
+            self.file_path = file_path
+            
             # Setup with loaded data
             self.total_frames = self.data.shape[0]
             
@@ -402,9 +406,9 @@ class DataManager:
         bleach_correction = parameters.get('bleach_correction', False)
         drift_correction = parameters.get('drift_correction', False)
         
-        # Check if necessary attributes are in the provided parameters
-        if self.file_path is None:
-            return False, "No file loaded. Please load a file first.", None
+        # Check if data is loaded
+        if self.data is None:
+            return False, "No data loaded. Please load a file first.", None
         
         # Initialize progress
         self.update_progress(0)
@@ -416,19 +420,12 @@ class DataManager:
             # Create PySOFI data object
             sofi = PysofiData()
             
-            # Load data
+            # Load data from our already loaded data
             self.update_status("Loading data into PySOFI...")
             try:
-                # Try to use the load_tiff method if available
-                if hasattr(sofi, 'load_tiff'):
-                    sofi.load_tiff(self.file_path)
-                else:
-                    # Try to load the data manually
-                    import tifffile
-                    data = tifffile.imread(self.file_path)
-                    
-                    # Store the data in the PySOFI object
-                    sofi.frames = data
+                # Load data directly from our data array
+                sofi.frames = self.data.copy()
+                print(f"DEBUG: Loaded data into PySOFI with shape {sofi.frames.shape}")
             except Exception as e:
                 self.update_status(f"Error loading data: {str(e)}")
                 return False, f"Failed to load data into PySOFI: {str(e)}", None
