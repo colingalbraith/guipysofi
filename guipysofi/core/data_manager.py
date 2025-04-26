@@ -417,15 +417,36 @@ class DataManager:
         try:
             self.update_status("Creating PySOFI data object...")
             
-            # Create PySOFI data object
-            sofi = PysofiData()
+            # Save data to a temporary file if needed for PySOFI
+            if self.file_path is None or not os.path.exists(self.file_path):
+                temp_dir = os.path.dirname(os.path.abspath(__file__))
+                temp_file = f"temp_sofi_data_{os.getpid()}.tif"
+                temp_path = os.path.join(temp_dir, temp_file)
+                self.temp_files.append(temp_path)
+                
+                self.update_status("Creating temporary file for PySOFI...")
+                tifffile.imwrite(temp_path, self.data)
+                filepath = os.path.dirname(temp_path)
+                filename = os.path.basename(temp_path)
+                print(f"DEBUG: Created temporary file: {temp_path}")
+            else:
+                # Use existing file path
+                filepath = os.path.dirname(self.file_path)
+                filename = os.path.basename(self.file_path)
+                print(f"DEBUG: Using existing file: {self.file_path}")
             
-            # Load data from our already loaded data
+            # Create PySOFI data object with required arguments
+            print(f"DEBUG: Initializing PysofiData with filepath={filepath}, filename={filename}")
+            sofi = PysofiData(filepath, filename)
+            
+            # Ensure data is loaded
             self.update_status("Loading data into PySOFI...")
             try:
-                # Load data directly from our data array
-                sofi.frames = self.data.copy()
-                print(f"DEBUG: Loaded data into PySOFI with shape {sofi.frames.shape}")
+                # Check if data is loaded properly
+                if not hasattr(sofi, 'frames') or sofi.frames is None:
+                    print("DEBUG: Frames not loaded automatically, setting manually")
+                    sofi.frames = self.data.copy()
+                print(f"DEBUG: PySOFI data shape: {sofi.frames.shape if hasattr(sofi, 'frames') else 'None'}")
             except Exception as e:
                 self.update_status(f"Error loading data: {str(e)}")
                 return False, f"Failed to load data into PySOFI: {str(e)}", None
@@ -485,10 +506,14 @@ class DataManager:
             # Use optimal parallel settings if available
             if NUMBA_AVAILABLE:
                 # Let Numba use optimal thread count
+                print("DEBUG: Using Numba for acceleration")
                 sofi.calc_moments_set(highest_order=order)
             else:
                 # Use standard calculation
+                print("DEBUG: Using standard calculation (no Numba)")
                 sofi.calc_moments_set(highest_order=order)
+            
+            print(f"DEBUG: Moments calculation complete, moving to cumulants")
             
             # Apply weighting if specified
             if weighting != "none":
@@ -496,8 +521,10 @@ class DataManager:
                 
                 # Try to set weighting via attribute
                 try:
+                    print(f"DEBUG: Setting weighting to {weighting}")
                     sofi.weighting = weighting
                 except Exception as e:
+                    print(f"DEBUG: Could not set weighting attribute: {str(e)}")
                     self.update_status(f"Warning: Could not set weighting attribute: {str(e)}")
             
             self.update_progress(70)
@@ -505,41 +532,65 @@ class DataManager:
             
             # Call cumulants_images with weighted parameter if possible
             try:
+                print(f"DEBUG: Calling cumulants_images with highest_order={order}, weighting={weighting if weighting != 'none' else None}")
                 sofi.cumulants_images(highest_order=order, weighting=weighting if weighting != "none" else None)
-            except TypeError:
+                print("DEBUG: cumulants_images completed successfully")
+            except TypeError as e:
                 # If weighting parameter isn't accepted, call without it
+                print(f"DEBUG: TypeError in cumulants_images: {str(e)}, trying without weighting parameter")
                 sofi.cumulants_images(highest_order=order)
+                print("DEBUG: cumulants_images without weighting completed successfully")
+            except Exception as e:
+                print(f"DEBUG: Error in cumulants_images: {str(e)}")
+                raise
+            
+            # Check if cumulants were calculated
+            if not hasattr(sofi, 'cumulants_set') or not sofi.cumulants_set:
+                print("DEBUG: No cumulants_set found after calculation")
+                raise ValueError("Failed to calculate cumulants")
+            else:
+                print(f"DEBUG: cumulants_set found with keys: {list(sofi.cumulants_set.keys())}")
             
             # Apply deconvolution if requested
             if deconv and order > 2:
                 self.update_status("Applying deconvolution...")
                 try:
+                    print(f"DEBUG: Applying deconvolution for order {order}")
                     sofi.reconstruct_fourier(orders=[order])
                     
                     # Get result from reconstruction
                     if hasattr(sofi, 'fourier_result') and order in sofi.fourier_result:
+                        print(f"DEBUG: Deconvolution successful for order {order}")
                         self.sofi_result = sofi.fourier_result[order].copy()
                         self.update_status("Deconvolution applied successfully")
                     else:
+                        print(f"DEBUG: Deconvolution produced no result, using regular SOFI")
                         self.update_status("Warning: Deconvolution produced no result, using regular SOFI instead")
                         self.sofi_result = sofi.cumulants_set[order].copy()
                 except Exception as e:
+                    print(f"DEBUG: Deconvolution error: {str(e)}")
                     self.update_status(f"Warning: Deconvolution error: {str(e)}, using regular SOFI instead")
                     self.sofi_result = sofi.cumulants_set[order].copy()
             else:
                 # Get result from cumulants
+                print(f"DEBUG: Preparing SOFI result from cumulants_set, looking for order {order}")
                 if order not in sofi.cumulants_set:
                     available = list(sofi.cumulants_set.keys())
+                    print(f"DEBUG: Order {order} not found in cumulants_set, available orders: {available}")
                     if available:
                         order = max(available)
+                        print(f"DEBUG: Using highest available order {order} instead")
                     else:
+                        print(f"DEBUG: No orders available in cumulants_set")
                         raise ValueError("No results available")
                 
                 # Store the actual SOFI data
+                print(f"DEBUG: Storing result for order {order}")
                 self.sofi_result = sofi.cumulants_set[order].copy()
                 print(f"DEBUG: Setting self.sofi_result with shape {self.sofi_result.shape}")
             
             # Clean up
+            print("DEBUG: Cleaning up PySOFI object")
             del sofi
             self._cleanup_temp_files()
             
@@ -554,6 +605,9 @@ class DataManager:
             return True, f"Successfully completed {order}-order SOFI analysis", self.sofi_result
             
         except Exception as e:
+            import traceback
+            print(f"DEBUG: Exception in run_sofi: {str(e)}")
+            traceback.print_exc()
             self._cleanup_temp_files()
             self.update_status("SOFI analysis failed")
             return False, f"SOFI calculation failed: {str(e)}", None
@@ -611,8 +665,11 @@ class DataManager:
         for temp_path in self.temp_files:
             if os.path.exists(temp_path):
                 try:
+                    print(f"DEBUG: Removing temporary file: {temp_path}")
                     os.remove(temp_path)
-                except Exception:
+                    print(f"DEBUG: Successfully removed: {temp_path}")
+                except Exception as e:
+                    print(f"DEBUG: Failed to remove temporary file {temp_path}: {str(e)}")
                     pass
         self.temp_files = []
     
