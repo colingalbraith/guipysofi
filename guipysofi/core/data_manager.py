@@ -9,6 +9,7 @@ import numpy as np
 import tifffile
 import gc
 from concurrent.futures import ThreadPoolExecutor
+from guipysofi.core.optimization import NUMBA_AVAILABLE
 
 # Try to import optional dependencies
 try:
@@ -539,6 +540,7 @@ class DataManager:
                 
                 # Store the actual SOFI data
                 self.sofi_result = sofi.cumulants_set[order].copy()
+                print(f"DEBUG: Setting self.sofi_result with shape {self.sofi_result.shape}")
             
             # Clean up
             del sofi
@@ -551,6 +553,7 @@ class DataManager:
             self.update_status(f"SOFI analysis complete: order {order}")
             self.update_progress(100)
             
+            print(f"DEBUG: Returning success with sofi_result shape {self.sofi_result.shape}")
             return True, f"Successfully completed {order}-order SOFI analysis", self.sofi_result
             
         except Exception as e:

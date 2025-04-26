@@ -9,6 +9,7 @@ from tkinter import ttk, filedialog, messagebox
 from tkinterdnd2 import DND_FILES, TkinterDnD
 import os
 import threading
+import matplotlib.pyplot as plt
 
 # Local imports
 from guipysofi.core.data_manager import DataManager
@@ -522,9 +523,25 @@ class SOFIGUI:
     
     def _run_sofi(self):
         """Run SOFI analysis."""
-        if self.data_manager.data is None:
-            messagebox.showwarning("No Data", "Please load a TIFF stack first.")
-            return
+        # Make sure we have a data manager
+        if not hasattr(self, 'data_manager') or self.data_manager is None:
+            self.data_manager = DataManager(
+                status_callback=self.update_status,
+                progress_callback=self.update_progress
+            )
+        
+        # Check if data is loaded
+        if not hasattr(self.data_manager, 'data') or self.data_manager.data is None:
+            # Try to load the file if path is set
+            file_path = self.file_path_var.get()
+            if file_path:
+                success, message = self.data_manager.load_file(file_path)
+                if not success:
+                    messagebox.showwarning("Load Error", f"Failed to load file: {message}")
+                    return
+            else:
+                messagebox.showwarning("No Data", "Please load a TIFF stack first.")
+                return
         
         # Disable run button
         self.run_button.configure(state=tk.DISABLED)
@@ -541,6 +558,8 @@ class SOFIGUI:
                 'deconvolution': self.deconv_var.get()
             }
             
+            print(f"DEBUG: Starting SOFI analysis with parameters: {parameters}")
+            
             # Start a thread to run the analysis
             threading.Thread(target=self._run_sofi_thread, args=(parameters,), daemon=True).start()
             
@@ -554,9 +573,12 @@ class SOFIGUI:
         try:
             # Run SOFI calculation
             self.update_status("Running SOFI analysis...")
+            print(f"DEBUG: Starting SOFI analysis with parameters: {parameters}")
             
             # Create DataManager if not already existing
             if not hasattr(self, 'data_manager') or self.data_manager is None:
+                self.update_status("Creating new DataManager...")
+                print("DEBUG: Creating new DataManager")
                 self.data_manager = DataManager(
                     status_callback=self.update_status,
                     progress_callback=self.update_progress
@@ -565,22 +587,27 @@ class SOFIGUI:
                 # Load file if it hasn't been loaded already
                 if not hasattr(self.data_manager, 'file_path') or not self.data_manager.file_path:
                     file_path = self.file_path_var.get()
+                    print(f"DEBUG: Need to load file: {file_path}")
                     if not file_path:
                         self.update_status("No file selected")
                         return
                         
                     success, message = self.data_manager.load_file(file_path)
+                    print(f"DEBUG: File load result: {success}, {message}")
                     if not success:
                         self.update_status(f"Failed to load file: {message}")
                         return
             
             # Run SOFI
+            print("DEBUG: Calling data_manager.run_sofi()")
             success, message, results = self.data_manager.run_sofi(parameters)
+            print(f"DEBUG: run_sofi result: {success}, {message}, {results is not None}")
             
             # Update UI with results
             if success:
                 self.update_status(message)
                 if hasattr(self.data_manager, 'sofi_result'):
+                    print("DEBUG: Setting SOFI result data for visualization")
                     self.sofi_visualizer.set_data(
                         self.data_manager.sofi_result, 
                         is_sofi=True, 
@@ -589,11 +616,15 @@ class SOFIGUI:
                     self.notebook.select(1)  # Switch to SOFI result tab
                     self.save_button.configure(state=tk.NORMAL)
                 else:
+                    print("DEBUG: No sofi_result attribute found in data_manager")
                     self.update_status("No SOFI result to display")
             else:
                 self.update_status(f"SOFI analysis failed: {message}")
                 
         except Exception as e:
+            import traceback
+            print(f"DEBUG: Exception in _run_sofi_thread: {str(e)}")
+            traceback.print_exc()
             self.update_status(f"SOFI analysis error: {str(e)}")
         finally:
             # Re-enable run button

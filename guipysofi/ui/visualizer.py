@@ -128,17 +128,22 @@ class DataVisualizer:
         self.ax.axis('off')
         self.canvas.draw_idle()
     
-    def set_data(self, data, order=None, method=None, frames=None):
+    def set_data(self, data, is_sofi=None, order=None, method=None, frames=None):
         """
         Set the data to visualize.
         
         Args:
             data: Numpy array containing the data
+            is_sofi: Boolean indicating if this is SOFI data (optional)
             order: SOFI order (for SOFI results only)
             method: SOFI method (for SOFI results only)
             frames: Number of frames used (for SOFI results only)
         """
         self.data = data
+        
+        # If is_sofi is provided, update self.is_sofi
+        if is_sofi is not None:
+            self.is_sofi = is_sofi
         
         if self.is_sofi:
             # Normalize result for display
@@ -154,8 +159,11 @@ class DataVisualizer:
             
             # Update title with metadata if provided
             title = "SOFI Result"
-            if order is not None and method is not None and frames is not None:
-                title = f"{order}-Order SOFI ({method}, {frames} frames)"
+            if order is not None:
+                if method is not None and frames is not None:
+                    title = f"{order}-Order SOFI ({method}, {frames} frames)"
+                else:
+                    title = f"{order}-Order SOFI"
             
             # Update display
             self.ax.clear()
