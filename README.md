@@ -14,6 +14,12 @@ Key features:
 - Deconvolution for further resolution enhancement
 - Compatible with standard TIFF stacks
 
+<img width="1470" alt="image" src="https://github.com/user-attachments/assets/52d7a67a-6212-4bcf-a9d4-6763e0f144db" />
+
+<img width="1470" alt="image" src="https://github.com/user-attachments/assets/00acee16-890f-4f36-b97b-dece61fe576d" />
+
+
+
 ## Installation
 
 ### Prerequisites
